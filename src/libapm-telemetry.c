@@ -37,6 +37,7 @@ struct apm_export {
 	/* data exported by the inertial sensor module at the gyro rate */
 	struct tlm_producer *imu_producer;
 	float raw_gyro[3];
+	float raw_accel[3];
 	uint8_t fsync_flag;
 };
 
@@ -158,7 +159,7 @@ void ap_hook_AHRS_update(const struct AHRS_state *state)
 	 */
 
 	/* export the data in telemetry */
-	time_us_to_timespec(&state->time_us, &ts);
+	clock_gettime(CLOCK_MONOTONIC, &ts);
 	tlm_producer_put_sample(export.ahrs_producer, &ts);
 }
 
@@ -168,19 +169,22 @@ void ap_hook_gyro_sample(const struct gyro_sample *state)
 
 	/* copy gyro data to local structures */
 	memcpy(export.raw_gyro, state->gyro, sizeof(export.raw_gyro));
-
-	/*
-	 * waiting for fsync_flag to be exported by ardupilot
-	 * memcpy(&export.fsync_flag, state->fsync_flag,
-	 *	sizeof(export.fsync_flag));
-	 */
+	clock_gettime(CLOCK_MONOTONIC, &ts);
 
 	/* export the data in telemetry */
-	time_us_to_timespec(&state->time_us, &ts);
 	tlm_producer_put_sample(export.imu_producer, &ts);
 }
 
 void ap_hook_accel_sample(const struct accel_sample *state)
 {
-	ULOGD("updated accel sample");
+	/* copy accel data to local structures */
+	memcpy(export.raw_accel, state->accel, sizeof(export.raw_accel));
+
+	export.fsync_flag = state->fsync_set;
+
+	/*
+	 * HACK. We need gyro and fsync bit to be exported at once and
+	 * the gyro sample hook is called in the same context and just
+	 * after the accel hook, so it will export both data
+	 */
 }
