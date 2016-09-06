@@ -8,8 +8,8 @@ include $(CLEAR_VARS)
 
 LOCAL_MODULE := libapm-telemetry
 LOCAL_DESTDIR := usr/lib/ardupilot/modules
-LOCAL_CATEGORY_PATH := gimbal
-LOCAL_DESCRIPTION := Gimbal communication library
+LOCAL_CATEGORY_PATH := apm
+LOCAL_DESCRIPTION := Ardupilot export module
 
 LOCAL_SRC_FILES := \
 	src/libapm-telemetry.c
