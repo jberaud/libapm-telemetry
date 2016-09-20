@@ -19,6 +19,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <math.h>
+#include <inttypes.h>
 #include <libtelemetry.h>
 #include <futils/futils.h>
 #include <futils/timetools.h>
@@ -39,6 +40,9 @@ struct apm_export {
 	float raw_gyro[3];
 	float raw_accel[3];
 	uint8_t fsync_flag;
+
+	/* time offset in order to avoid calling clock_gettime everytime */
+	uint64_t time_offset;
 };
 
 static struct apm_export export;
@@ -143,12 +147,32 @@ error:
 
 void ap_hook_setup_complete(uint64_t time_us)
 {
-	ULOGI("setup_complete called");
+	struct timespec ts;
+	uint64_t monotonic_time_us;
+	int ret;
+
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	ret = time_timespec_to_us(&ts, &monotonic_time_us);
+	if (ret < 0) {
+		ULOGE("error converting timespec to us %s",
+				strerror(-ret));
+		return;
+	}
+	export.time_offset = monotonic_time_us - time_us;
+	ULOGD("AP_Module setup complete, time offset %" PRIu64,
+			export.time_offset);
 }
 
 void ap_hook_AHRS_update(const struct AHRS_state *state)
 {
 	struct timespec ts;
+	int ret;
+	uint64_t time_us;
+
+	/* check structure version */
+	if (state->structure_version != AHRS_state_version)
+		ULOGE("AHRS_state_version %d but expected %d",
+				state->structure_version, AHRS_state_version);
 
 	/* copy AHRS data to local structures */
 	memcpy(export.body_quaternion, state->quat,
@@ -159,24 +183,50 @@ void ap_hook_AHRS_update(const struct AHRS_state *state)
 	 */
 
 	/* export the data in telemetry */
-	clock_gettime(CLOCK_MONOTONIC, &ts);
+	time_us = state->time_us + export.time_offset;
+	ret = time_us_to_timespec(&time_us, &ts);
+	if (ret < 0) {
+		ULOGE("error converting timespec to us %s",
+				strerror(-ret));
+		return;
+	}
 	tlm_producer_put_sample(export.ahrs_producer, &ts);
 }
 
 void ap_hook_gyro_sample(const struct gyro_sample *state)
 {
 	struct timespec ts;
+	int ret;
+	uint64_t time_us;
+
+	/* check structure version */
+	if (state->structure_version != gyro_sample_version)
+		ULOGE("gyro_sample_version %d but expected %d",
+				state->structure_version, gyro_sample_version);
 
 	/* copy gyro data to local structures */
 	memcpy(export.raw_gyro, state->gyro, sizeof(export.raw_gyro));
-	clock_gettime(CLOCK_MONOTONIC, &ts);
 
+	/* export the data in telemetry */
+	time_us = state->time_us + export.time_offset;
+	ret = time_us_to_timespec(&time_us, &ts);
+	if (ret < 0) {
+		ULOGE("error converting timespec to us %s",
+				strerror(-ret));
+		return;
+	}
 	/* export the data in telemetry */
 	tlm_producer_put_sample(export.imu_producer, &ts);
 }
 
 void ap_hook_accel_sample(const struct accel_sample *state)
 {
+	/* check structure version */
+	if (state->structure_version != accel_sample_version)
+		ULOGE("accel_sample_version %d but expected %d",
+				state->structure_version, accel_sample_version);
+
+
 	/* copy accel data to local structures */
 	memcpy(export.raw_accel, state->accel, sizeof(export.raw_accel));
 
