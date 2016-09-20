@@ -19,6 +19,7 @@ LOCAL_C_INCLUDES := $(LOCAL_PATH)/include
 LOCAL_LIBRARIES := \
 	libulog \
 	libfutils \
-	libtelemetry
+	libtelemetry \
+	ardupilot-headers
 
 include $(BUILD_SHARED_LIBRARY)
